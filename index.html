@@ -211,7 +211,7 @@ Es gilt deutsches Recht. Sollte eine Bestimmung unwirksam sein, bleibt der Rest 
 };
 
 /* ------------------------- Zustand ------------------------- */
-const STEPS = [["Start","Budget und Gäste"],["Pakete","Preis pro Person"],["Extras","Zusatzleistungen"],["Wünsche","Notizen"],["Übersicht","Budget und Rabatt"],["Abschluss","AGB und PDF"]];
+const STEPS = [["Start","Budget und Gäste"],["Pakete","Preis pro Person"],["Extras","Zusatzleistungen"],["Wünsche","Notizen"],["Übersicht","Rabatt"],["Abschluss","AGB und PDF"]];
 const blank = () => ({ id:null, kunde:"", datum:"", anlass:"", budget:"", gaeste:"", paket:null, extras:{}, wuensche:"", rabatt:0, agb:false, sig:null });
 let S = blank(), step = 0, maxStep = 0, signed = false;
 const $ = id => document.getElementById(id);
@@ -252,7 +252,8 @@ function renderSteps(){
 }
 function renderBar(){
   const c = calc(), has = c.budget > 0;
-  $("kpis").innerHTML = `
+  if (step >= 4){ $("kpis").innerHTML = `<div class="kpi"><small>Gesamt</small><b class="num">${eur(c.gesamt)}</b></div>`; }
+  else $("kpis").innerHTML = `
     <div class="kpi"><small>Wunschbudget</small><b class="num">${has ? eur(c.budget) : "offen"}</b></div>
     <div class="kpi"><small>Aktuelle Kosten</small><b class="num">${eur(c.gesamt)}</b></div>
     ${has && c.zwischen ? `<div class="kpi ${c.diff<0?"over":"under"}"><small>${c.diff<0?"Über Budget":"Noch frei"}</small><b class="num">${eur(Math.abs(c.diff))}</b></div>` : ""}`;
@@ -279,7 +280,7 @@ function renderView(){
 function vStart(){
   const saved = store.get("angebote") || [];
   return `<div class="gap">
-  <div><h1>Wie soll Ihre Veranstaltung aussehen?</h1><p class="muted">Mit Budget und Gästezahl zeigen wir Ihnen passende Pakete.</p></div>
+  <div><h1>Wie soll eure Feier aussehen?</h1><p class="muted">Mit Budget und Gästezahl zeigen wir euch passende Pakete.</p></div>
   <div class="panel gap">
     <div class="grid2">
       <label class="f">Wunschbudget in Euro<input class="big" id="budget" type="number" inputmode="decimal" min="0" step="100" placeholder="z. B. 8000" value="${esc(S.budget)}"></label>
@@ -386,16 +387,13 @@ function bWuensche(){ const t = $("wuensche"); t.value = S.wuensche; t.oninput =
 
 /* Schritt 4 */
 function vUebersicht(){
-  return `<div class="gap"><div><h2>Gegenüberstellung</h2><p class="muted">Budget und aktuelle Kosten. Der Rabatt wirkt sofort auf alle Zahlen.</p></div>
+  return `<div class="gap"><div><h2>Euer Angebot</h2><p class="muted">Hier kannst du einen Rabatt gewähren. Alle Zahlen passen sich sofort an.</p></div>
   <div class="grid2" style="align-items:start">
     <div class="panel gap">
-      <div id="sumBudget"></div>
-      <div>
-        <h3>Rabatt gewähren</h3>
-        <div class="disc-box" style="margin-top:12px">
-          <input id="rabatt" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${S.rabatt || ""}" placeholder="0" aria-label="Rabatt in Prozent"> <b>%</b>
-          <div class="chips">${[0,3,5,10,15].map(p => `<button class="chip" data-p="${p}">${p} %</button>`).join("")}</div>
-        </div>
+      <h3 class="orn">Rabatt gewähren</h3>
+      <div class="disc-box">
+        <input id="rabatt" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${S.rabatt || ""}" placeholder="0" aria-label="Rabatt in Prozent"> <b>%</b>
+        <div class="chips">${[0,3,5,10,15].map(p => `<button class="chip" data-p="${p}">${p} %</button>`).join("")}</div>
       </div>
     </div>
     <div class="panel" id="sumTable"></div>
@@ -407,18 +405,7 @@ function bUebersicht(){
   document.querySelectorAll(".chip").forEach(c => c.onclick = () => { S.rabatt = +c.dataset.p; r.value = S.rabatt || ""; fillSummary(); renderBar(); });
   fillSummary();
 }
-function fillSummary(){
-  const c = calc();
-  const has = c.budget > 0, share = has ? c.gesamt / c.budget : 0;
-  $("sumBudget").innerHTML = `
-    <div class="row"><span class="muted">Wunschbudget</span><b class="num">${has ? eur(c.budget) : "nicht angegeben"}</b></div>
-    <div class="row"><span class="muted">Aktuelle Kosten</span><b class="num">${eur(c.gesamt)}</b></div>
-    ${has ? `<div class="meter" aria-hidden="true"><i class="${share>1?"over":""}" style="width:${Math.min(100,share*100)}%"></i></div>
-    <div class="muted num">${Math.round(share*100)} % des Budgets ausgeschöpft</div>
-    <div style="margin-top:14px"><span class="status ${c.diff<0?"no":"ok"}">${c.diff<0 ? `${eur(-c.diff)} über Budget` : `${eur(c.diff)} unter Budget`}</span></div>` : ""}
-    <div class="row" style="margin-top:14px"><span class="muted">Preis pro Person (gesamt)</span><b class="num">${eur(c.proPerson)}</b></div>`;
-  $("sumTable").innerHTML = tableHtml(c);
-}
+function fillSummary(){ $("sumTable").innerHTML = tableHtml(calc()); }
 function tableHtml(c){
   return `<h3>Angebotsposten</h3><div class="tbl"><table>
     <tr><th>Position</th><th class="r">Betrag</th></tr>
@@ -430,6 +417,7 @@ function tableHtml(c){
     ${c.pct ? `<div class="row disc"><span>Rabatt ${String(c.pct).replace(".",",")} %</span><span class="num">− ${eur(c.rabatt)}</span></div>` : ""}
     <div class="row grand"><span>Gesamt</span><span class="num">${eur(c.gesamt)}</span></div>
     ${CONFIG.mwst ? `<div class="row muted"><span>enthaltene MwSt. ${CONFIG.mwst} %</span><span class="num">${eur(c.mwst)}</span></div>` : ""}
+    ${c.g ? `<div class="row muted"><span>Preis pro Person</span><span class="num">${eur(c.proPerson)}</span></div>` : ""}
   </div>`;
 }
 
