@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Angebotsplaner</title>
+</head>
+<body>
+
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+/* Layout: iPad-Beratungstisch. Oben Schrittleiste, mittig Inhalt, unten feste Leiste mit Budget / Kosten / Weiter. */
+:root{
+  --bg:#f8f6f3; --surface:#ffffff; --ink:#3c3c3b; --head:#203b47; --muted:#6b6660; --line:#e2dcd4;
+  --accent:#b44955; --accent-ink:#ffffff; --accent-soft:#f6e6e7; --orn:#d9a5ab;
+  --good:#4f7a3f; --good-soft:#e3ecdc; --bad:#a3282f; --bad-soft:#f7dfdf; --warn:#9a6a00;
+  --font-display:"Cormorant Garamond",Georgia,serif;
+  --font-body:"Hanken Grotesk","Montserrat",system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1b2a31; --surface:#243740; --ink:#e9e5df; --head:#f1ebe3; --muted:#aab6b9; --line:#385059;
+  --accent:#e0707c; --accent-ink:#2a0f13; --accent-soft:#41303a; --orn:#9a5a64;
+  --good:#9cc78a; --good-soft:#2b3f2c; --bad:#ff9a9a; --bad-soft:#4a2428; --warn:#e5b94e; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1b2a31; --surface:#243740; --ink:#e9e5df; --head:#f1ebe3; --muted:#aab6b9; --line:#385059;
+  --accent:#e0707c; --accent-ink:#2a0f13; --accent-soft:#41303a; --orn:#9a5a64;
+  --good:#9cc78a; --good-soft:#2b3f2c; --bad:#ff9a9a; --bad-soft:#4a2428; --warn:#e5b94e; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:auto}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:17px;line-height:1.45;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));-webkit-tap-highlight-color:transparent}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--surface)}
+.wrap{max-width:1180px;margin:0 auto}
+h1,h2,h3{font-family:var(--font-display);color:var(--head);font-weight:600;margin:0;text-wrap:balance}
+h1{font-size:3rem;line-height:1.05} h2{font-size:2.3rem;line-height:1.1} h3{font-size:1.65rem;line-height:1.15}
+h2::after,h3.orn::after{content:"";display:block;width:150px;height:9px;margin-top:8px;background:linear-gradient(var(--orn),var(--orn)) 0 4px/58px 1px no-repeat,linear-gradient(var(--orn),var(--orn)) 92px 4px/58px 1px no-repeat;position:relative}
+h2::before,h3.orn::before{content:"";display:none}
+.muted{color:var(--muted)}
+.price,.kpi b,.row.grand,.big{font-variant-numeric:lining-nums}
+.num{font-variant-numeric:tabular-nums}
+/* Kopf */
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:var(--surface);border-bottom:1px solid var(--line);margin:0 calc(-1*max(16px,env(safe-area-inset-left,0px)));padding:12px max(16px,env(safe-area-inset-left,0px))}
+.hd{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.brand{font-family:var(--font-display);font-weight:700;font-size:1.5rem;white-space:nowrap;color:var(--head)}
+.steps{display:flex;gap:6px;flex:1;min-width:0;overflow-x:auto}
+.step{flex:1;min-width:92px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:.85rem;padding:8px 6px;border-bottom:3px solid var(--line);text-align:left;cursor:pointer;min-height:44px}
+.step b{display:block;font-weight:600;color:inherit}
+.step.on{color:var(--head);border-color:var(--accent)} .step.done{border-color:var(--accent);color:var(--accent)}
+.step:disabled{opacity:.45;cursor:default}
+main{padding-block:28px 140px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:26px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:20px}
+.gap{display:flex;flex-direction:column;gap:20px}
+label.f{display:flex;flex-direction:column;gap:6px;font-weight:600;font-size:.95rem}
+input[type=text],input[type=number],input[type=date],textarea{font:inherit;font-weight:400;color:var(--ink);background:var(--bg);border:1.5px solid var(--line);border-radius:10px;padding:14px 16px;min-height:52px;width:100%}
+input:focus,textarea:focus,button:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+textarea{min-height:240px;resize:vertical;line-height:1.5}
+.big{font-size:2.1rem!important;font-family:var(--font-display);font-weight:700!important;color:var(--head)!important}
+.hint{font-weight:400;color:var(--muted);font-size:.85rem}
+.btn{font:inherit;font-weight:600;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);border-radius:4px;padding:0 24px;min-height:52px;letter-spacing:.02em;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.sm{min-height:44px;padding:0 14px;font-size:.9rem}
+.btn.danger{color:var(--bad)}
+/* Karten */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+.card{position:relative;text-align:left;font:inherit;color:inherit;background:var(--surface);border:2px solid var(--line);border-radius:4px;padding:22px;cursor:pointer;display:flex;flex-direction:column;gap:12px}
+.card.sel{border-color:var(--accent);background:var(--accent-soft)}
+.card .price{font-family:var(--font-display);color:var(--accent);font-size:2.4rem;font-weight:700;line-height:1}
+.card .price small{font-size:.9rem;font-weight:500;color:var(--muted);font-family:var(--font-body)}
+.card ul{margin:0;padding-left:1.1em;color:var(--muted);font-size:.95rem}
+.card .tot{margin-top:auto;padding-top:12px;border-top:1px dashed var(--line);font-size:.92rem;color:var(--muted)}
+.tag{display:inline-block;background:var(--head);color:var(--surface);font-size:.75rem;font-weight:600;border-radius:99px;padding:2px 10px;width:fit-content}
+.check{position:absolute;top:16px;right:16px;width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-weight:700;color:transparent}
+.sel .check{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.cat{margin:28px 0 12px;font-size:.8rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+.cat:first-child{margin-top:0}
+.extra{display:flex;gap:16px;align-items:center;border:2px solid var(--line);border-radius:4px;padding:16px 18px;background:var(--surface);cursor:pointer;text-align:left;font:inherit;color:inherit;width:100%}
+.extra.sel{border-color:var(--accent);background:var(--accent-soft)}
+.extra .tx{flex:1;min-width:0}
+.extra .nm{font-weight:600}
+.extra .pr{text-align:right;white-space:nowrap}
+.extra .pr b{display:block}
+.box{width:30px;height:30px;flex:none;border-radius:4px;border:2px solid var(--line);display:grid;place-items:center;font-weight:700;color:transparent}
+.sel>.box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.qty{display:flex;align-items:center;gap:8px;margin-top:8px}
+.qty button{width:44px;height:44px;border-radius:10px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font-size:1.3rem;cursor:pointer}
+.qty span{min-width:2.5ch;text-align:center;font-weight:600}
+/* Tabellen / Summen */
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 8px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+td.r,th.r{text-align:right}
+.tbl{overflow-x:auto}
+.totals{display:flex;flex-direction:column;gap:8px;margin-top:14px}
+.row{display:flex;justify-content:space-between;gap:12px}
+.row.grand{font-family:var(--font-display);color:var(--head);font-size:2.2rem;font-weight:700;border-top:2px solid var(--ink);padding-top:12px;margin-top:6px}
+.disc{color:var(--bad)}
+.meter{height:22px;border-radius:99px;background:var(--line);position:relative;overflow:hidden;margin:14px 0 6px}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:var(--accent);transition:width .25s}
+.meter i.over{background:var(--bad)}
+.status{display:inline-flex;gap:8px;align-items:center;border-radius:10px;padding:10px 14px;font-weight:600}
+.status.ok{background:var(--good-soft);color:var(--good)} .status.no{background:var(--bad-soft);color:var(--bad)}
+.disc-box{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.disc-box input[type=number]{width:120px;font-size:1.4rem;font-weight:600;text-align:right}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{min-height:44px;padding:0 16px;border-radius:99px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);font:inherit;font-weight:600;cursor:pointer}
+.chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.agb{max-height:200px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;font-size:.88rem;color:var(--muted);white-space:pre-wrap}
+.tick{display:flex;gap:14px;align-items:flex-start;cursor:pointer;font-weight:500}
+.tick input{width:28px;height:28px;flex:none;accent-color:var(--accent)}
+canvas#sig{width:100%;height:170px;background:var(--bg);border:1.5px dashed var(--muted);border-radius:10px;touch-action:none;display:block}
+.saved{display:flex;gap:12px;align-items:center;border-top:1px solid var(--line);padding:12px 0;flex-wrap:wrap}
+.saved .tx{flex:1;min-width:200px}
+/* Untere Leiste */
+footer{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-right,0px)) calc(12px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.ft{max-width:1180px;margin:0 auto;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.kpis{display:flex;gap:26px;flex:1;min-width:0;flex-wrap:wrap}
+.kpi small{display:block;color:var(--muted);font-size:.75rem;letter-spacing:.07em;text-transform:uppercase;font-weight:600}
+.kpi b{font-family:var(--font-display);color:var(--head);font-size:1.7rem;line-height:1.1}
+.kpi.over b{color:var(--bad)} .kpi.under b{color:var(--good)}
+.nav{display:flex;gap:10px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(110px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:12px 20px;border-radius:12px;z-index:40;font-weight:600;max-width:90vw}
+@media (max-width:640px){h1{font-size:1.8rem}.kpis{gap:14px}.kpi b{font-size:1.1rem}.panel{padding:18px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header><div class="hd">
+  <div class="brand" id="brandName"></div>
+  <nav class="steps" id="steps" aria-label="Fortschritt"></nav>
+</div></header>
+<div class="wrap"><main id="view"></main></div>
+<footer><div class="ft">
+  <div class="kpis" id="kpis"></div>
+  <div class="nav"><button class="btn" id="back">Zurück</button><button class="btn primary" id="next">Weiter</button></div>
+</div></footer>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* =====================================================================
+   KONFIGURATION: hier Firma, Pakete, Zusatzleistungen und AGB pflegen.
+   Preise aus der Webseite übernommen. Pakete: fix = Festpreis, preis = pro Person.
+   preis-Typen:  once = einmalig | perPerson = pro Gast x Gästezahl | perUnit = pro Stück/Stunde (Menge wählbar)
+   ===================================================================== */
+const CONFIG = {
+  firma: "Alte Schraubenfabrik",
+  firmaAdresse: "Adresse · PLZ Ort · E-Mail · Telefon (bitte in CONFIG eintragen)",
+  mwst: 19,                       // Preise verstehen sich inkl. MwSt. (auf 0 setzen, um die MwSt-Zeile auszublenden)
+  gueltigTage: 14,
+  pakete: [
+    { id:"momente", gruppe:"Hochzeitspakete", name:"Herzensmomente", ab:true, fix:0, preis:149, text:"Die Alte Schraubenfabrik exklusiv für Eure Feier.",
+      inkl:["Exklusive Nutzung der Alten Schraubenfabrik: großer Veranstaltungssaal, Empore und Außenbereiche",
+            "Mobiliar und Ausstattung: eckige oder runde Tische, Bestuhlung, weißer Tischwäsche, Geschirr, Besteck in Silber oder Gold sowie Gläser",
+            "Auf- und Abbau: Aufstellen der Tische und Bestuhlung, Eindecken, Vorbereitung sowie Abbau und Aufräumen nach der Feier",
+            "Sektempfang: Haussekt (mit oder ohne Alkohol), Orangensaft und Wasser, begrenzt auf 2 Stunden",
+            "Catering: hochwertiges Buffet, zubereitet durch unsere hauseigene Küche",
+            "Getränkepauschale: Wasser, Softdrinks, Säfte, Bier, Kaffee und Tee",
+            "Service und Betreuung: Servicepersonal während der Veranstaltung, Barpersonal und Buffetservice",
+            "Veranstaltungszeit: 12 Stunden Nutzung bzw. Service bis 02:00 Uhr, Verlängerung gegen Aufpreis möglich",
+            "Reinigung: Endreinigung des Veranstaltungsbereichs nach der Hochzeit"] },
+    { id:"wuensche", gruppe:"Hochzeitspakete", name:"Herzenswünsche", ab:true, fix:0, preis:199, tag:"Mehr Leistung", text:"Mit Aperol Spritz, erweitertem Buffet und Mitternachtssnack.",
+      inkl:["Exklusive Nutzung der Alten Schraubenfabrik: großer Veranstaltungssaal, Empore und Außenbereiche",
+            "Mobiliar und Ausstattung: eckige oder runde Tische, Bestuhlung, weiße Tischwäsche, Geschirr, Besteck in Silber oder Gold sowie Gläser",
+            "Auf- und Abbau: Aufstellen der Tische und Bestuhlung, Eindecken, Vorbereitung sowie Abbau und Aufräumen nach der Feier",
+            "Sektempfang: Haussekt (mit oder ohne Alkohol), Orangensaft, Aperol Spritz und Lillet, begrenzt auf 2 Stunden",
+            "Catering: hochwertiges Buffet mit erweiterter Speisenauswahl, frisch zubereitet durch unsere hauseigene Küche",
+            "Mitternachtssnack: Currywurst und Brötchen, vegetarische Alternativen möglich, z. B. Käseplatten oder Flammkuchen",
+            "Getränkepauschale: Wasser, Softdrinks, Säfte, Bier, Hauswein, zwei Spirituosen, Kaffee und Tee",
+            "Service und Betreuung: Servicepersonal während der Veranstaltung, Barpersonal und Buffetservice",
+            "Veranstaltungszeit: 12 Stunden Nutzung bzw. Service bis 02:00 Uhr, Verlängerung gegen Aufpreis möglich",
+            "Reinigung: Endreinigung des Veranstaltungsbereichs nach der Hochzeit"] },
+    { id:"s-classic", gruppe:"Standesamtliche Trauung", name:"Classic", fix:498, preis:19, text:"Der passende Rahmen für Eure standesamtliche Trauung.",
+      inkl:["Exklusive Nutzung unseres stilvollen Trausaals","Bestuhlung für bis zu 50 Personen","Liebevolle Dekoration des Trausaals",
+            "Sektempfang im Anschluss an die Trauung (1,5 Stunden) inkl. Haussekt mit und ohne Alkohol, Orangensaft und Wasser",
+            "Stehtische für den Empfang","Professionelles Servicepersonal für einen rundum gelungenen Empfang"] },
+    { id:"s-signature", gruppe:"Standesamtliche Trauung", name:"Signature", fix:498, preis:29, tag:"Beliebt", text:"Classic plus Kuchenbuffet im Hauscafé.",
+      inkl:["Alle Leistungen aus dem Paket Classic","Anschließendes Kuchenbuffet im Hauscafé inkl. 2 Stück Kuchen/Torte pro Person",
+            "Hochwertige Kaffee- und Tee-Auswahl","Exklusiv reservierter Bereich im Café für 2 Stunden"] },
+    { id:"s-prestige", gruppe:"Standesamtliche Trauung", name:"Prestige", fix:498, preis:69, text:"Classic plus festliches Essen in der Gastronomie.",
+      inkl:["Alle Leistungen aus dem Paket Classic","Festliches Mittag- oder Abendessen","3-Gänge-Menü","Wasser am Tisch inklusive",
+            "Exklusiver Bereich in der Gastronomie für 3 Stunden"] }
+  ],
+  extras: [
+    { id:"trauIn",  excl:"trauort", kat:"Trauort und Ausstattung", name:"Trauort Indoor", text:"Auf- und Abbau des Trauortes inkl. Bestuhlung, Traubogen und Teppich", typ:"once", preis:300 },
+    { id:"trauOut", excl:"trauort", kat:"Trauort und Ausstattung", name:"Trauort Outdoor", text:"Auf- und Abbau des Trauortes inkl. Bestuhlung, Traubogen und Teppich", typ:"once", preis:400 },
+    { id:"buffet",  kat:"Essen und Trinken", name:"Buffet-Varianten", text:"Weitere Buffet-Varianten nach Wunsch und Aufwand. Kalkuliert mit 15 €, je nach Aufwand bis 20 € p. P.", typ:"perPerson", preis:15, ab:true },
+    { id:"cocktail",kat:"Essen und Trinken", name:"Cocktails und Longdrinks", text:"Drei Cocktails aus unserer Cocktailkarte, begrenzt auf 4 Stunden", typ:"perPerson", preis:24 },
+    { id:"candy",   kat:"Essen und Trinken", name:"Candy Bar", text:"Eine süße Auswahl für Eure Hochzeitsgäste. Bis 50 Personen 250 €, jede weitere Person 4 €", typ:"staffel", preis:250, bis:50, weiter:4 },
+    { id:"verl",    kat:"Zeit und Organisation", name:"Verlängerung der Veranstaltungszeit", text:"Zusatzstunden nach 02:00 Uhr, ausschließlich mit Barservice, maximal bis 04:00 Uhr", typ:"perUnit", einheit:"Stunde", preis:400, max:2 },
+    { id:"box",     kat:"Unterhaltung", name:"Fotobox", text:"Inkl. Requisiten und Hintergrundsystem, je nach Aufwand", typ:"once", preis:259 },
+    { id:"kinder",  kat:"Unterhaltung", name:"Kinder-Spiel- und Ruhebereich", text:"Ein eigener Bereich zum Spielen, Malen, Bauen und Entspannen", typ:"once", preis:99 }
+  ],
+  agb: `1. Geltungsbereich
+Diese Allgemeinen Geschäftsbedingungen gelten für alle Angebote und Veranstaltungen von ${"Ihr Unternehmen"}.
+
+2. Vertragsschluss
+Das Angebot ist unverbindlich, bis es vom Kunden unterzeichnet und von uns bestätigt wurde. Die Gästezahl ist verbindlich spätestens 7 Tage vor der Veranstaltung mitzuteilen. Abweichungen nach unten bis 10 % werden nicht berechnet.
+
+3. Preise
+Alle Preise verstehen sich in Euro inklusive der gesetzlichen Mehrwertsteuer. Preise pro Person werden mit der verbindlichen Gästezahl multipliziert.
+
+4. Zahlung
+Eine Anzahlung von 30 % ist nach Vertragsschluss fällig. Der Restbetrag ist spätestens 7 Tage nach der Veranstaltung zu zahlen.
+
+5. Stornierung
+Bei Stornierung bis 90 Tage vor dem Termin berechnen wir 20 %, bis 30 Tage 50 %, danach 90 % der vereinbarten Leistungen.
+
+6. Haftung
+Für Schäden an eingebrachten Gegenständen haften wir nur bei Vorsatz oder grober Fahrlässigkeit. Der Kunde haftet für Schäden, die er oder seine Gäste verursachen.
+
+7. Schlussbestimmungen
+Es gilt deutsches Recht. Sollte eine Bestimmung unwirksam sein, bleibt der Rest wirksam.
+
+(Beispieltext, bitte durch die gültigen AGB ersetzen.)`
+};
+
+/* ------------------------- Zustand ------------------------- */
+const STEPS = [["Start","Budget und Gäste"],["Pakete","Preis pro Person"],["Extras","Zusatzleistungen"],["Wünsche","Notizen"],["Übersicht","Budget und Rabatt"],["Abschluss","AGB und PDF"]];
+const blank = () => ({ id:null, kunde:"", datum:"", anlass:"", budget:"", gaeste:"", paket:null, extras:{}, wuensche:"", rabatt:0, agb:false, sig:null });
+let S = blank(), step = 0, maxStep = 0, signed = false;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const eur = n => new Intl.NumberFormat("de-DE",{style:"currency",currency:"EUR"}).format(n);
+const eurPdf = n => new Intl.NumberFormat("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2}).format(n) + " EUR";
+const num = v => { const n = parseFloat(String(v).replace(",",".")); return isFinite(n) && n > 0 ? n : 0; };
+const store = { get(k){ try{return JSON.parse(localStorage.getItem(k))}catch(e){return null} }, set(k,v){ try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false} } };
+
+/* ------------------------- Berechnung ------------------------- */
+function calc(){
+  const g = Math.floor(num(S.gaeste));
+  const p = CONFIG.pakete.find(x => x.id === S.paket);
+  const paketSumme = p ? p.fix + p.preis * g : 0;
+  const lines = [];
+  for (const e of CONFIG.extras){
+    const q = S.extras[e.id]; if (!q) continue;
+    let menge = 1, summe = e.preis, basis = eur(e.preis);
+    if (e.typ === "perPerson"){ menge = g; summe = e.preis * g; basis = `${eur(e.preis)} x ${g} Gäste`; }
+    if (e.typ === "perUnit"){ menge = q; summe = e.preis * q; basis = `${eur(e.preis)} x ${q} ${e.einheit}`; }
+    if (e.typ === "staffel"){ const mehr = Math.max(0, g - e.bis); summe = e.preis + mehr * e.weiter; basis = mehr ? `${eur(e.preis)} bis ${e.bis} Gäste + ${mehr} x ${eur(e.weiter)}` : `${eur(e.preis)} bis ${e.bis} Gäste`; }
+    lines.push({ e, summe, basis });
+  }
+  const extraSumme = lines.reduce((a,l)=>a+l.summe,0);
+  const zwischen = paketSumme + extraSumme;
+  const pct = Math.min(100, Math.max(0, num(S.rabatt)));
+  const rabatt = Math.round(zwischen * pct) / 100;
+  const gesamt = zwischen - rabatt;
+  const budget = num(S.budget);
+  return { g, p, paketSumme, lines, extraSumme, zwischen, pct, rabatt, gesamt, budget,
+           diff: budget - gesamt, proPerson: g ? gesamt / g : 0, mwst: CONFIG.mwst ? gesamt * CONFIG.mwst / (100 + CONFIG.mwst) : 0 };
+}
+
+/* ------------------------- Rendering ------------------------- */
+function renderSteps(){
+  $("steps").innerHTML = STEPS.map((s,i)=>`<button class="step ${i===step?"on":""} ${i<step?"done":""}" data-i="${i}" ${i>maxStep?"disabled":""}><b>${s[0]}</b>${s[1]}</button>`).join("");
+  $("steps").querySelectorAll(".step").forEach(b => b.onclick = () => go(+b.dataset.i));
+}
+function renderBar(){
+  const c = calc(), has = c.budget > 0;
+  $("kpis").innerHTML = `
+    <div class="kpi"><small>Wunschbudget</small><b class="num">${has ? eur(c.budget) : "offen"}</b></div>
+    <div class="kpi"><small>Aktuelle Kosten</small><b class="num">${eur(c.gesamt)}</b></div>
+    ${has && c.zwischen ? `<div class="kpi ${c.diff<0?"over":"under"}"><small>${c.diff<0?"Über Budget":"Noch frei"}</small><b class="num">${eur(Math.abs(c.diff))}</b></div>` : ""}`;
+  $("back").hidden = step === 0;
+  $("next").hidden = step === STEPS.length - 1;
+  $("next").disabled = !canNext();
+  $("next").textContent = step === 3 ? "Zur Übersicht" : "Weiter";
+}
+function canNext(){
+  if (step === 0) return num(S.gaeste) >= 1;
+  if (step === 1) return !!S.paket;
+  return true;
+}
+function go(i){
+  step = i; maxStep = Math.max(maxStep, i);
+  renderSteps(); renderView(); renderBar(); window.scrollTo({top:0});
+}
+function renderView(){
+  $("view").innerHTML = [vStart, vPakete, vExtras, vWuensche, vUebersicht, vAbschluss][step]();
+  [bStart, bPakete, bExtras, bWuensche, bUebersicht, bAbschluss][step]();
+}
+
+/* Schritt 0 */
+function vStart(){
+  const saved = store.get("angebote") || [];
+  return `<div class="gap">
+  <div><h1>Wie soll Ihre Veranstaltung aussehen?</h1><p class="muted">Mit Budget und Gästezahl zeigen wir Ihnen passende Pakete.</p></div>
+  <div class="panel gap">
+    <div class="grid2">
+      <label class="f">Wunschbudget in Euro<input class="big" id="budget" type="number" inputmode="decimal" min="0" step="100" placeholder="z. B. 8000" value="${esc(S.budget)}"></label>
+      <label class="f">Anzahl Gäste<input class="big" id="gaeste" type="number" inputmode="numeric" min="1" step="1" placeholder="z. B. 80" value="${esc(S.gaeste)}"></label>
+    </div>
+    <div class="grid2">
+      <label class="f">Name des Kunden <span class="hint">für das Angebot</span><input id="kunde" type="text" autocomplete="off" value="${esc(S.kunde)}"></label>
+      <label class="f">Anlass <span class="hint">z. B. Hochzeit, Firmenfeier</span><input id="anlass" type="text" autocomplete="off" value="${esc(S.anlass)}"></label>
+      <label class="f">Wunschtermin<input id="datum" type="date" value="${esc(S.datum)}"></label>
+    </div>
+    <div id="hintBudget" class="muted"></div>
+  </div>
+  ${saved.length ? `<div class="panel"><h3>Gespeicherte Angebote</h3><div id="savedList"></div></div>` : ""}
+  </div>`;
+}
+function bStart(){
+  for (const k of ["budget","gaeste","kunde","anlass","datum"]) $(k).oninput = e => { S[k] = e.target.value; renderBar(); startHint(); };
+  startHint(); renderSaved();
+}
+function startHint(){
+  const el = $("hintBudget"); if (!el) return;
+  const g = Math.floor(num(S.gaeste)), b = num(S.budget);
+  el.textContent = g && b ? `Das entspricht etwa ${eur(b/g)} pro Gast.` : "";
+}
+function renderSaved(){
+  const box = $("savedList"); if (!box) return;
+  const list = store.get("angebote") || [];
+  box.innerHTML = "";
+  list.slice().reverse().forEach(a => {
+    const d = document.createElement("div"); d.className = "saved";
+    const t = document.createElement("div"); t.className = "tx";
+    const c = (() => { const keep = S; S = a; const r = calc(); S = keep; return r; })();
+    t.innerHTML = `<b></b><div class="muted"></div>`;
+    t.querySelector("b").textContent = `${a.nr}  ${a.kunde || "Ohne Namen"}`;
+    t.querySelector(".muted").textContent = `${a.anlass || "Veranstaltung"} · ${c.g} Gäste · ${eur(c.gesamt)} · ${new Date(a.saved).toLocaleDateString("de-DE")}`;
+    const open = document.createElement("button"); open.className = "btn sm"; open.textContent = "Öffnen";
+    open.onclick = () => { S = Object.assign(blank(), a); maxStep = 5; go(4); };
+    const del = document.createElement("button"); del.className = "btn sm danger"; del.textContent = "Löschen";
+    del.onclick = () => { if (del.dataset.arm) { store.set("angebote", (store.get("angebote")||[]).filter(x => x.id !== a.id)); renderSaved(); } else { del.dataset.arm = 1; del.textContent = "Wirklich löschen?"; } };
+    d.append(t, open, del); box.append(d);
+  });
+}
+
+/* Schritt 1 */
+const pkgSum = (p,g) => p.fix + p.preis * g;
+const pkgPrice = p => p.fix ? `${eur(p.fix)} <small>Festpreis</small> + ${eur(p.preis)} <small>pro Person</small>` : `${p.ab ? "ab " : ""}${eur(p.preis)} <small>pro Person</small>`;
+function vPakete(){
+  const g = Math.floor(num(S.gaeste)), b = num(S.budget);
+  const groups = [...new Set(CONFIG.pakete.map(p => p.gruppe))];
+  return `<div class="gap"><div><h2>Unsere Pakete</h2><p class="muted">Berechnet für ${g} Gäste${b ? ` und ein Budget von ${eur(b)}` : ""}.</p></div>
+  ${groups.map(gr => `<div><div class="cat">${esc(gr)}</div><div class="cards">${CONFIG.pakete.filter(p => p.gruppe === gr).map(p => {
+    const sum = pkgSum(p,g), over = b && sum > b;
+    return `<button class="card ${S.paket===p.id?"sel":""}" data-id="${p.id}">
+      <span class="check">✓</span>
+      ${p.tag ? `<span class="tag">${esc(p.tag)}</span>` : ""}
+      <h3>${esc(p.name)}</h3>
+      <div class="price num" style="${p.fix?"font-size:1.45rem;line-height:1.25":""}">${pkgPrice(p)}</div>
+      <div class="muted">${esc(p.text)}</div>
+      <ul>${p.inkl.map(i => `<li>${esc(i)}</li>`).join("")}</ul>
+      <div class="tot num">${g} Gäste: <b style="color:${over?"var(--bad)":"var(--ink)"}">${eur(sum)}</b>${b ? (over ? ` · ${eur(sum-b)} über Budget` : ` · ${eur(b-sum)} unter Budget`) : ""}</div>
+    </button>`; }).join("")}</div></div>`).join("")}
+  ${S.paket && S.paket.startsWith("s-") ? `<p class="muted">Die Preise verstehen sich exklusive der Gebühren, die das Standesamt berechnet.</p>` : ""}</div>`;
+}
+function bPakete(){
+  document.querySelectorAll(".card").forEach(c => c.onclick = () => { S.paket = c.dataset.id; renderView(); renderBar(); });
+}
+
+/* Schritt 2 */
+function vExtras(){
+  const g = Math.floor(num(S.gaeste));
+  const cats = [...new Set(CONFIG.extras.map(e => e.kat))];
+  return `<div class="gap"><div><h2>Zusatzleistungen</h2><p class="muted">Mehrfachauswahl möglich (Trauort Indoor oder Outdoor). Pro-Person-Leistungen rechnen wir mit ${g} Gästen.</p></div>
+  <div>${cats.map(k => `<div class="cat">${esc(k)}</div><div class="cards">${CONFIG.extras.filter(e => e.kat === k).map(e => {
+    const q = S.extras[e.id] || 0;
+    const sum = e.typ === "perPerson" ? e.preis * g : e.typ === "perUnit" ? e.preis * (q || 1) : e.typ === "staffel" ? e.preis + Math.max(0, g - e.bis) * e.weiter : e.preis;
+    const sub = e.typ === "perPerson" ? `${e.ab ? "ab " : ""}${eur(e.preis)} pro Person` : e.typ === "perUnit" ? `${eur(e.preis)} pro ${e.einheit}` : e.typ === "staffel" ? `${eur(e.preis)} + ${eur(e.weiter)} je weiterer Gast` : "einmalig";
+    return `<div class="extra ${q?"sel":""}" data-id="${e.id}" role="button" tabindex="0">
+      <span class="box">✓</span>
+      <div class="tx"><div class="nm">${esc(e.name)}</div><div class="muted">${esc(e.text)}</div>
+        ${e.typ==="perUnit" && q ? `<div class="qty"><button data-d="-1" aria-label="weniger">−</button><span class="num">${q}</span><button data-d="1" aria-label="mehr">+</button><span class="muted">${esc(e.einheit)}</span></div>` : ""}</div>
+      <div class="pr num"><b>${eur(sum)}</b><span class="muted">${sub}</span></div></div>`; }).join("")}</div>`).join("")}</div></div>`;
+}
+function bExtras(){
+  document.querySelectorAll(".extra").forEach(el => {
+    const e = CONFIG.extras.find(x => x.id === el.dataset.id);
+    const toggle = () => { if (S.extras[e.id]) delete S.extras[e.id]; else { if (e.excl) CONFIG.extras.forEach(o => { if (o.excl === e.excl) delete S.extras[o.id]; }); S.extras[e.id] = 1; } keepScroll(); };
+    el.onclick = ev => {
+      const b = ev.target.closest("button[data-d]");
+      if (b){ ev.stopPropagation(); const n = (S.extras[e.id]||1) + +b.dataset.d; if (n < 1) delete S.extras[e.id]; else S.extras[e.id] = Math.min(n, e.max || 99); keepScroll(); return; }
+      if (ev.target.closest(".qty")) return;
+      toggle();
+    };
+    el.onkeydown = ev => { if ((ev.key === "Enter" || ev.key === " ") && ev.target === el){ ev.preventDefault(); toggle(); } };
+  });
+}
+function keepScroll(){ const y = window.scrollY; renderView(); renderBar(); window.scrollTo({top:y}); }
+
+/* Schritt 3 */
+function vWuensche(){
+  return `<div class="gap"><div><h2>Besondere Wünsche</h2><p class="muted">Für unser Team: Allergien, Ablauf, Musikwünsche, Sonderanfertigungen. Das Feld erscheint im Angebot und im PDF.</p></div>
+  <div class="panel"><label class="f">Notizen des Mitarbeiters<textarea id="wuensche" placeholder="z. B. 6 Gäste vegan, 2 Gäste glutenfrei, Torte um 21 Uhr, Kinderstühle für 4 Kinder …"></textarea></label></div></div>`;
+}
+function bWuensche(){ const t = $("wuensche"); t.value = S.wuensche; t.oninput = e => { S.wuensche = e.target.value; }; }
+
+/* Schritt 4 */
+function vUebersicht(){
+  return `<div class="gap"><div><h2>Gegenüberstellung</h2><p class="muted">Budget und aktuelle Kosten. Der Rabatt wirkt sofort auf alle Zahlen.</p></div>
+  <div class="grid2" style="align-items:start">
+    <div class="panel gap">
+      <div id="sumBudget"></div>
+      <div>
+        <h3>Rabatt gewähren</h3>
+        <div class="disc-box" style="margin-top:12px">
+          <input id="rabatt" type="number" inputmode="decimal" min="0" max="100" step="0.5" value="${S.rabatt || ""}" placeholder="0" aria-label="Rabatt in Prozent"> <b>%</b>
+          <div class="chips">${[0,3,5,10,15].map(p => `<button class="chip" data-p="${p}">${p} %</button>`).join("")}</div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" id="sumTable"></div>
+  </div></div>`;
+}
+function bUebersicht(){
+  const r = $("rabatt");
+  r.oninput = () => { let v = num(r.value); if (v > 100){ v = 100; r.value = 100; } S.rabatt = v; fillSummary(); renderBar(); };
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { S.rabatt = +c.dataset.p; r.value = S.rabatt || ""; fillSummary(); renderBar(); });
+  fillSummary();
+}
+function fillSummary(){
+  const c = calc();
+  const has = c.budget > 0, share = has ? c.gesamt / c.budget : 0;
+  $("sumBudget").innerHTML = `
+    <div class="row"><span class="muted">Wunschbudget</span><b class="num">${has ? eur(c.budget) : "nicht angegeben"}</b></div>
+    <div class="row"><span class="muted">Aktuelle Kosten</span><b class="num">${eur(c.gesamt)}</b></div>
+    ${has ? `<div class="meter" aria-hidden="true"><i class="${share>1?"over":""}" style="width:${Math.min(100,share*100)}%"></i></div>
+    <div class="muted num">${Math.round(share*100)} % des Budgets ausgeschöpft</div>
+    <div style="margin-top:14px"><span class="status ${c.diff<0?"no":"ok"}">${c.diff<0 ? `${eur(-c.diff)} über Budget` : `${eur(c.diff)} unter Budget`}</span></div>` : ""}
+    <div class="row" style="margin-top:14px"><span class="muted">Preis pro Person (gesamt)</span><b class="num">${eur(c.proPerson)}</b></div>`;
+  $("sumTable").innerHTML = tableHtml(c);
+}
+function tableHtml(c){
+  return `<h3>Angebotsposten</h3><div class="tbl"><table>
+    <tr><th>Position</th><th class="r">Betrag</th></tr>
+    ${c.p ? `<tr><td><b>${esc(c.p.name)}</b><div class="muted num">${c.p.fix ? eur(c.p.fix)+" Festpreis + " : ""}${eur(c.p.preis)} x ${c.g} Gäste</div></td><td class="r num">${eur(c.paketSumme)}</td></tr>` : ""}
+    ${c.lines.map(l => `<tr><td>${esc(l.e.name)}<div class="muted num">${l.basis}</div></td><td class="r num">${eur(l.summe)}</td></tr>`).join("")}
+  </table></div>
+  <div class="totals">
+    <div class="row"><span>Zwischensumme</span><span class="num">${eur(c.zwischen)}</span></div>
+    ${c.pct ? `<div class="row disc"><span>Rabatt ${String(c.pct).replace(".",",")} %</span><span class="num">− ${eur(c.rabatt)}</span></div>` : ""}
+    <div class="row grand"><span>Gesamt</span><span class="num">${eur(c.gesamt)}</span></div>
+    ${CONFIG.mwst ? `<div class="row muted"><span>enthaltene MwSt. ${CONFIG.mwst} %</span><span class="num">${eur(c.mwst)}</span></div>` : ""}
+  </div>`;
+}
+
+/* Schritt 5 */
+function vAbschluss(){
+  const c = calc();
+  return `<div class="gap"><div><h2>Abschluss</h2><p class="muted">Angebot prüfen, AGB bestätigen, speichern und als PDF ablegen.</p></div>
+  <div class="grid2" style="align-items:start">
+    <div class="panel">${tableHtml(c)}
+      ${S.wuensche.trim() ? `<h3 style="margin-top:22px">Besondere Wünsche</h3><p id="wishView" style="white-space:pre-wrap"></p>` : ""}</div>
+    <div class="panel gap">
+      <h3 class="orn">Allgemeine Geschäftsbedingungen</h3>
+      <div class="agb" id="agbText" tabindex="0"></div>
+      <label class="tick"><input type="checkbox" id="agbOk" ${S.agb?"checked":""}> Der Kunde hat die AGB gelesen und akzeptiert sie.</label>
+      <div><div class="row" style="align-items:center"><b>Unterschrift des Kunden</b><button class="btn sm" id="sigClear">Löschen</button></div>
+        <canvas id="sig" style="margin-top:8px"></canvas></div>
+      <div class="chips"><button class="btn" id="save">Angebot speichern</button><button class="btn primary" id="pdf">Als PDF speichern</button></div>
+      <div class="muted" id="saveInfo"></div>
+    </div>
+  </div></div>`;
+}
+function bAbschluss(){
+  $("agbText").textContent = CONFIG.agb.replace("Ihr Unternehmen", CONFIG.firma);
+  if ($("wishView")) $("wishView").textContent = S.wuensche;
+  $("agbOk").onchange = e => { S.agb = e.target.checked; };
+  setupSig();
+  $("save").onclick = () => saveOffer(true);
+  $("pdf").onclick = makePdf;
+}
+function setupSig(){
+  const cv = $("sig"), ratio = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight; cv.width = w*ratio; cv.height = h*ratio;
+  const ctx = cv.getContext("2d"); ctx.scale(ratio, ratio); ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111";
+  // dunkler Strich auf hellem Grund, damit er im PDF lesbar ist
+  const paint = () => { ctx.fillStyle = "#fff"; ctx.fillRect(0,0,w,h); };
+  paint();
+  if (S.sig){ const im = new Image(); im.onload = () => ctx.drawImage(im,0,0,w,h); im.src = S.sig; }
+  let down = false;
+  const pt = e => { const r = cv.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  cv.onpointerdown = e => { down = true; cv.setPointerCapture(e.pointerId); const [x,y] = pt(e); ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+.1,y+.1); ctx.stroke(); };
+  cv.onpointermove = e => { if (!down) return; const [x,y] = pt(e); ctx.lineTo(x,y); ctx.stroke(); };
+  const end = () => { if (!down) return; down = false; S.sig = cv.toDataURL("image/png"); };
+  cv.onpointerup = end; cv.onpointercancel = end;
+  $("sigClear").onclick = () => { paint(); S.sig = null; };
+}
+
+/* ------------------------- Speichern ------------------------- */
+function toast(msg){ const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3200); }
+function offerNr(){ const d = new Date(); return `AN-${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}-${String(Math.floor(Math.random()*900)+100)}`; }
+function saveOffer(announce){
+  if (!S.id){ S.id = "o" + Date.now(); S.nr = offerNr(); }
+  S.saved = Date.now();
+  const list = (store.get("angebote") || []).filter(x => x.id !== S.id);
+  list.push(JSON.parse(JSON.stringify(S)));
+  const ok = store.set("angebote", list);
+  if (announce) toast(ok ? `Angebot ${S.nr} gespeichert (auf diesem iPad)` : "Speichern auf diesem Gerät nicht möglich. Bitte das PDF sichern.");
+  const info = $("saveInfo"); if (info) info.textContent = ok ? `Gespeichert als ${S.nr}.` : "";
+  return ok;
+}
+
+/* ------------------------- PDF ------------------------- */
+async function makePdf(){
+  if (!S.agb){ toast("Bitte zuerst die AGB bestätigen."); $("agbOk").focus(); return; }
+  if (!window.jspdf){ toast("PDF-Modul nicht geladen. Bitte Internetverbindung prüfen."); return; }
+  saveOffer(false);
+  const c = calc(), { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:"mm", format:"a4" });
+  const W = 210, M = 18, R = W - M; let y = 20;
+  const ink = [18,48,47], mut = [100,115,113];
+  const need = h => { if (y + h > 280){ doc.addPage(); y = 20; } };
+  const txt = (t, x, o={}) => { doc.setFont("helvetica", o.b ? "bold" : "normal"); doc.setFontSize(o.s || 10); doc.setTextColor(...(o.c || ink)); doc.text(String(t), x, y, o.a ? {align:o.a} : undefined); };
+  const para = (t, o={}) => { doc.setFont("helvetica", o.b ? "bold" : "normal"); doc.setFontSize(o.s || 10); doc.setTextColor(...(o.c || ink));
+    const lines = doc.splitTextToSize(t, o.w || (R - M)); const lh = (o.s || 10) * 0.45;
+    for (const l of lines){ need(lh + 1); doc.text(l, M, y); y += lh; } };
+  const line = () => { doc.setDrawColor(200,212,210); doc.line(M, y, R, y); y += 5; };
+
+  txt(CONFIG.firma, M, {b:1, s:18}); y += 6; txt(CONFIG.firmaAdresse, M, {s:9, c:mut}); y += 12;
+  txt("Angebot", M, {b:1, s:22}); txt(S.nr, R, {a:"right", s:10, c:mut}); y += 6;
+  txt(`Datum: ${new Date().toLocaleDateString("de-DE")}   ·   gültig ${CONFIG.gueltigTage} Tage`, M, {s:9, c:mut}); y += 10;
+
+  txt("Kunde", M, {b:1}); txt("Veranstaltung", 110, {b:1}); y += 5;
+  txt(S.kunde || "-", M); txt(S.anlass || "-", 110); y += 5;
+  txt(`${c.g} Gäste`, M); txt(S.datum ? "Termin: " + new Date(S.datum).toLocaleDateString("de-DE") : "Termin: offen", 110); y += 5;
+  if (c.budget) { txt(`Wunschbudget: ${eurPdf(c.budget)}`, M); y += 5; }
+  y += 4; line();
+
+  txt("Position", M, {b:1, s:9, c:mut}); txt("Betrag", R, {b:1, s:9, c:mut, a:"right"}); y += 6;
+  const item = (name, sub, amt) => { need(12); txt(name, M, {b:1}); txt(eurPdf(amt), R, {a:"right"}); y += 4.5; if (sub){ txt(sub, M, {s:8.5, c:mut}); y += 4.5; } y += 1.5; };
+  if (c.p) item(`Paket ${c.p.name}`, `${c.p.fix ? eurPdf(c.p.fix) + " Festpreis + " : ""}${eurPdf(c.p.preis)} pro Person x ${c.g} Gäste`, c.paketSumme);
+  for (const l of c.lines) item(l.e.name, l.basis.replace(/€/g,"EUR").replace(/ /g," "), l.summe);
+  y += 2; line();
+  const tot = (a, b, o={}) => { need(8); txt(a, 110, o); txt(b, R, {...o, a:"right"}); y += o.s ? o.s*0.55 : 5.5; };
+  tot("Zwischensumme", eurPdf(c.zwischen));
+  if (c.pct) tot(`Rabatt ${String(c.pct).replace(".",",")} %`, "- " + eurPdf(c.rabatt), {c:[179,52,31]});
+  y += 1; tot("Gesamt", eurPdf(c.gesamt), {b:1, s:13});
+  if (CONFIG.mwst) tot(`enthaltene MwSt. ${CONFIG.mwst} %`, eurPdf(c.mwst), {s:9, c:mut});
+  tot(`Preis pro Person`, eurPdf(c.proPerson), {s:9, c:mut});
+  y += 6;
+
+  if (S.wuensche.trim()){ need(20); txt("Besondere Wünsche", M, {b:1, s:11}); y += 6; para(S.wuensche.trim()); y += 6; }
+
+  need(30); txt("Allgemeine Geschäftsbedingungen", M, {b:1, s:11}); y += 6;
+  para(CONFIG.agb.replace("Ihr Unternehmen", CONFIG.firma), {s:8, c:mut}); y += 4;
+  need(50); txt("Die AGB wurden gelesen und akzeptiert.", M, {s:9}); y += 6;
+  if (S.sig){ try { doc.addImage(S.sig, "PNG", M, y, 70, 24); } catch(e){} }
+  y += 26; doc.setDrawColor(...ink); doc.line(M, y, M + 70, y); y += 4;
+  txt(`${S.kunde || "Kunde"}, ${new Date().toLocaleDateString("de-DE")}`, M, {s:8.5, c:mut});
+
+  const n = doc.getNumberOfPages();
+  for (let i = 1; i <= n; i++){ doc.setPage(i); doc.setFontSize(8); doc.setTextColor(...mut); doc.text(`${CONFIG.firma} · ${S.nr} · Seite ${i}/${n}`, W/2, 290, {align:"center"}); }
+
+  const blob = doc.output("blob");
+  const name = `Angebot_${(S.kunde || "Kunde").replace(/[^\wäöüÄÖÜß-]+/g,"_")}_${S.nr}.pdf`;
+  try {
+    const dl = window.claude ? await window.claude.use("downloads") : null;
+    if (dl) await dl.save({ filename:name, data:blob });
+    else { // normaler Browser (z. B. Safari auf dem iPad): Download über Link
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+    toast("PDF gespeichert");
+  } catch(e){
+    toast(e && e.code === "declined" ? "Speichern abgebrochen." : "PDF-Download ist in dieser Ansicht nicht verfügbar. Bitte die Seite im Browser öffnen.");
+  }
+}
+
+/* ------------------------- Start ------------------------- */
+$("brandName").textContent = CONFIG.firma;
+$("back").onclick = () => go(Math.max(0, step - 1));
+$("next").onclick = () => { if (canNext()) go(step + 1); };
+renderSteps(); renderView(); renderBar();
+</script>
+
+</body>
+</html>
